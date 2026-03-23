@@ -1,0 +1,12 @@
+{
+  "period": "2026-02-19 to 2026-03-20",
+  "comparePeriod": "2026-01-20 to 2026-02-18",
+  "users": 532,
+  "sessions": 793,
+  "views": 1083,
+  "engagementRate": 0.5245901639344263,
+  "usersChangePct": -38.28,
+  "sessionsChangePct": -22.03,
+  "viewsChangePct": -14.66,
+  "engagementRateChangePct": 79.03
+}

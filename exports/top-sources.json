@@ -1,0 +1,52 @@
+[
+  {
+    "sourceMedium": "google / organic",
+    "sessions": 317,
+    "users": 188
+  },
+  {
+    "sourceMedium": "(direct) / (none)",
+    "sessions": 126,
+    "users": 103
+  },
+  {
+    "sourceMedium": "l.facebook.com / referral",
+    "sessions": 108,
+    "users": 64
+  },
+  {
+    "sourceMedium": "coccoc.com / referral",
+    "sessions": 56,
+    "users": 44
+  },
+  {
+    "sourceMedium": "youtube.com / referral",
+    "sessions": 50,
+    "users": 27
+  },
+  {
+    "sourceMedium": "m.facebook.com / referral",
+    "sessions": 37,
+    "users": 38
+  },
+  {
+    "sourceMedium": "bing / organic",
+    "sessions": 28,
+    "users": 24
+  },
+  {
+    "sourceMedium": "lm.facebook.com / referral",
+    "sessions": 22,
+    "users": 21
+  },
+  {
+    "sourceMedium": "(not set)",
+    "sessions": 19,
+    "users": 14
+  },
+  {
+    "sourceMedium": "yahoo / organic",
+    "sessions": 9,
+    "users": 5
+  }
+]
