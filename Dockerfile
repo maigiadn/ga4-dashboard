@@ -6,12 +6,19 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install pnpm
+# Install pnpm for flexibility
 RUN npm install -g pnpm
 
-# Copy package files
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile
+# Copy package files (support both npm and pnpm)
+COPY package.json pnpm-lock.yaml* package-lock.json* yarn.lock* ./
+
+# Install dependencies based on available lockfile
+RUN \
+  if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; \
+  elif [ -f package-lock.json ]; then npm ci; \
+  elif [ -f yarn.lock ]; then yarn --frozen-lockfile; \
+  else pnpm install; \
+  fi
 
 # 2. Rebuild the source code only when needed
 FROM base AS builder
@@ -19,23 +26,24 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Install pnpm again for the build step
-RUN npm install -g pnpm
-
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
-# Uncomment the following line in case you want to disable telemetry during the build.
 # ENV NEXT_TELEMETRY_DISABLED 1
 
-RUN pnpm run build
+# Performance: Install pnpm if needed for the build step, though npms/scripts often use the package manager in the lockfile
+RUN npm install -g pnpm
+
+RUN \
+  if [ -f pnpm-lock.yaml ]; then pnpm run build; \
+  else npm run build; \
+  fi
 
 # 3. Production image, copy all the files and run next
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-# Uncomment the following line in case you want to disable telemetry during runtime.
-# ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+# ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -55,8 +63,7 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
+ENV PORT=3000
 
 # server.js is created by next build from the standalone output
-# https://nextjs.org/docs/pages/api-reference/next-config-js/output
 CMD ["node", "server.js"]
