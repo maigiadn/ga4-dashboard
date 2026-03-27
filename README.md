@@ -1,7 +1,8 @@
+
 # GA4 Content Intelligence Dashboard
-
 Dashboard nội bộ theo dõi hiệu suất website từ Google Analytics 4 và hỗ trợ chiến lược content.
-
+Để kết nối Google Analytics Data API (GA4) trang website của với công cụ, vui lòng truy cập bài viết hướng dẫn tại: 
+http://maivangia.com/dung-openclaw-theo-doi-du-lieu-google-analytics
 ## Tính năng
 
 - **KPI Cards**: Người dùng, Phiên, Lượt xem, Tỷ lệ tương tác (so sánh kỳ trước)
