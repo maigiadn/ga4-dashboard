@@ -103,3 +103,76 @@ npm install
 - Custom date range picker
 - So sánh 2 khoảng thời gian
 - Đề xuất bài nên viết tiếp (dựa trên top queries)
+
+Chuẩn bị trước khi cấu hình
+Anh chỉ cần:
+
+1 tài khoản Google có quyền vào Google Cloud
+1 property GA4 cần theo dõi
+Openclaw đang chạy ổn trên máy/VM
+
+---
+Bước 1: Tạo Google Cloud Project
+Truy cập: https://console.cloud.google.com/
+Tạo project mới
+Ví dụ: [điền tên project của bạn vào đây]
+
+Mẹo: đặt tên project rõ mục đích như analytics-reporting để dễ quản lý lâu dài.
+
+---
+
+Bước 2: Bật Google Analytics Data API
+Trong project vừa tạo:
+
+Vào APIs & Services
+Chọn Enable APIs and Services
+Tìm và bật: Google Analytics Data API
+Đây là API bắt buộc để Openclaw có thể đọc dữ liệu GA4.
+
+---
+
+Bước 3: Tạo Service Account + tải key JSON
+Vào IAM & Admin → Service Accounts
+Tạo service account mới
+Ví dụ: [điền tên service account của bạn vào đây]
+Chọn service account vừa tạo → tab Keys
+Add Key → Create new key → JSON
+Tải file key JSON về máy
+
+---
+
+Bước 4: Đặt file key vào workspace Openclaw
+Đưa file JSON vào đúng vị trí:
+
+secrets/ga-service-account.json
+
+Nếu chưa có thư mục secrets thì tạo mới.
+
+Bảo mật bắt buộc
+Không commit key lên GitHub.
+Thêm vào .gitignore:
+
+secrets/ga-service-account.json
+
+
+---
+Bước 5: Cấp quyền Service Account trong GA4
+Truy cập: https://analytics.google.com/
+Chọn property GA4: [điền GA4 ID của bạn vào đây]
+Vào Admin → Property Access Management
+Thêm email service account
+Dạng: [điền service-account-email của bạn vào đây]
+(ví dụ format: your-sa@your-project-id.iam.gserviceaccount.com)
+Cấp quyền: Viewer
+
+Quyền Viewer là đủ để đọc dữ liệu báo cáo.
+
+---
+
+Checklist kiểm tra nhanh sau khi setup
+Đảm bảo đủ 3 điều kiện:
+Đã bật Google Analytics Data API
+File key tồn tại tại secrets/ga-service-account.json
+Service account có quyền Viewer trong đúng property GA4
+
+Nếu thiếu 1 trong 3, Openclaw sẽ không đọc được dữ liệu.
