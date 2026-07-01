@@ -36,3 +36,9 @@ next-env.d.ts
 # secrets
 *.json.key
 *service-account*.json
+
+# cloudflare / opennext
+/.open-next/
+/.wrangler/
+.dev.vars
+cloudflare-env.d.ts
