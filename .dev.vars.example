@@ -1,0 +1,8 @@
+# Local dev secrets for `next dev` / `wrangler dev` (via @opennextjs/cloudflare).
+# Copy to `.dev.vars` and fill in. Do NOT commit `.dev.vars`.
+
+GA4_PROPERTY_ID=331725099
+GA4_TOP_N=10
+
+# Paste the FULL service-account JSON on one line (escaped newlines in private_key are fine).
+GA4_SERVICE_ACCOUNT_JSON={"type":"service_account","client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"}

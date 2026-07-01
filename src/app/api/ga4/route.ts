@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { fetchDashboardData } from "@/lib/ga4";
 
+// Runs on the Cloudflare Workers runtime (via @opennextjs/cloudflare).
+// Force dynamic so the report is fetched per request, not evaluated at build time.
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

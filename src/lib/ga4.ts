@@ -1,28 +1,116 @@
-import { google } from "googleapis";
-import fs from "fs";
-import path from "path";
+import * as jose from "jose";
 
-const PROPERTY_ID = process.env.GA4_PROPERTY_ID || "331725099";
-const KEY_PATH = process.env.GA4_KEY_PATH || "";
+const GA4_API = "https://analyticsdata.googleapis.com/v1beta";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 
-function getAnalyticsClient() {
-  const keyPath = KEY_PATH.replace(/\\/g, "/");
+function getPropertyId(): string {
+  const id = process.env.GA4_PROPERTY_ID;
+  if (!id) {
+    throw new Error(
+      "Missing GA4_PROPERTY_ID. Set it in wrangler.jsonc `vars` (your own GA4 property id), or in .dev.vars for local dev."
+    );
+  }
+  return id;
+}
 
-  if (!fs.existsSync(keyPath)) {
-    throw new Error(`Service account key not found at: ${keyPath}`);
+interface ServiceAccount {
+  client_email: string;
+  private_key: string;
+}
+
+function getServiceAccount(): ServiceAccount {
+  const raw = process.env.GA4_SERVICE_ACCOUNT_JSON;
+  if (!raw) {
+    throw new Error(
+      "Missing GA4_SERVICE_ACCOUNT_JSON. Set it via `wrangler secret put GA4_SERVICE_ACCOUNT_JSON` (paste the full service-account JSON), or in .dev.vars for local dev."
+    );
+  }
+  let sa: ServiceAccount;
+  try {
+    sa = JSON.parse(raw);
+  } catch {
+    throw new Error("GA4_SERVICE_ACCOUNT_JSON is not valid JSON");
+  }
+  if (!sa.client_email || !sa.private_key) {
+    throw new Error(
+      "GA4_SERVICE_ACCOUNT_JSON is missing client_email or private_key"
+    );
+  }
+  return sa;
+}
+
+// Cached OAuth token for the lifetime of the isolate (avoids re-signing per request).
+let cachedToken: { token: string; exp: number } | null = null;
+
+async function getAccessToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedToken && cachedToken.exp - 60 > now) {
+    return cachedToken.token;
   }
 
-  const keyFile = JSON.parse(fs.readFileSync(keyPath, "utf-8"));
+  const sa = getServiceAccount();
+  // jose signs RS256 with WebCrypto — works in the Workers V8 isolate.
+  const key = await jose.importPKCS8(sa.private_key, "RS256");
+  const assertion = await new jose.SignJWT({ scope: SCOPE })
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setIssuer(sa.client_email)
+    .setSubject(sa.client_email)
+    .setAudience(TOKEN_URL)
+    .setIssuedAt(now)
+    .setExpirationTime(now + 3600)
+    .sign(key);
 
-  const auth = new google.auth.GoogleAuth({
-    credentials: {
-      client_email: keyFile.client_email,
-      private_key: keyFile.private_key,
-    },
-    scopes: ["https://www.googleapis.com/auth/analytics.readonly"],
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
   });
 
-  return google.analyticsdata({ version: "v1beta", auth });
+  if (!res.ok) {
+    throw new Error(
+      `Failed to obtain Google access token: ${res.status} ${await res.text()}`
+    );
+  }
+
+  const json = (await res.json()) as {
+    access_token: string;
+    expires_in: number;
+  };
+  cachedToken = { token: json.access_token, exp: now + json.expires_in };
+  return json.access_token;
+}
+
+interface GA4Row {
+  dimensionValues?: { value?: string }[];
+  metricValues?: { value?: string }[];
+}
+
+interface GA4ReportResponse {
+  rows?: GA4Row[];
+}
+
+async function runReport(
+  requestBody: Record<string, unknown>
+): Promise<GA4ReportResponse> {
+  const token = await getAccessToken();
+  const res = await fetch(`${GA4_API}/properties/${getPropertyId()}:runReport`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!res.ok) {
+    throw new Error(`GA4 runReport failed: ${res.status} ${await res.text()}`);
+  }
+
+  return (await res.json()) as GA4ReportResponse;
 }
 
 export interface SummaryMetrics {
@@ -90,22 +178,17 @@ export async function fetchSummaryMetrics(
   startDate: string,
   endDate: string
 ): Promise<SummaryMetrics> {
-  const client = getAnalyticsClient();
-
-  const response = await client.properties.runReport({
-    property: `properties/${PROPERTY_ID}`,
-    requestBody: {
-      dateRanges: [{ startDate, endDate }],
-      metrics: [
-        { name: "totalUsers" },
-        { name: "sessions" },
-        { name: "screenPageViews" },
-        { name: "engagementRate" },
-      ],
-    },
+  const data = await runReport({
+    dateRanges: [{ startDate, endDate }],
+    metrics: [
+      { name: "totalUsers" },
+      { name: "sessions" },
+      { name: "screenPageViews" },
+      { name: "engagementRate" },
+    ],
   });
 
-  const row = response.data.rows?.[0];
+  const row = data.rows?.[0];
   const values = row?.metricValues || [];
 
   return {
@@ -120,23 +203,18 @@ export async function fetchTimeSeries(
   startDate: string,
   endDate: string
 ): Promise<TimeSeriesPoint[]> {
-  const client = getAnalyticsClient();
-
-  const response = await client.properties.runReport({
-    property: `properties/${PROPERTY_ID}`,
-    requestBody: {
-      dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: "date" }],
-      metrics: [
-        { name: "totalUsers" },
-        { name: "sessions" },
-        { name: "screenPageViews" },
-      ],
-      orderBys: [{ dimension: { dimensionName: "date" } }],
-    },
+  const data = await runReport({
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "date" }],
+    metrics: [
+      { name: "totalUsers" },
+      { name: "sessions" },
+      { name: "screenPageViews" },
+    ],
+    orderBys: [{ dimension: { dimensionName: "date" } }],
   });
 
-  return (response.data.rows || []).map((row) => {
+  return (data.rows || []).map((row) => {
     const dims = row.dimensionValues || [];
     const vals = row.metricValues || [];
     const raw = dims[0]?.value || "00000000";
@@ -155,26 +233,19 @@ export async function fetchTopLandingPages(
   endDate: string,
   topN: number = 10
 ): Promise<LandingPageRow[]> {
-  const client = getAnalyticsClient();
-
-  const response = await client.properties.runReport({
-    property: `properties/${PROPERTY_ID}`,
-    requestBody: {
-      dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: "landingPagePlusQueryString" }],
-      metrics: [
-        { name: "screenPageViews" },
-        { name: "totalUsers" },
-        { name: "engagementRate" },
-      ],
-      orderBys: [
-        { metric: { metricName: "screenPageViews" }, desc: true },
-      ],
-      limit: topN.toString(),
-    },
+  const data = await runReport({
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "landingPagePlusQueryString" }],
+    metrics: [
+      { name: "screenPageViews" },
+      { name: "totalUsers" },
+      { name: "engagementRate" },
+    ],
+    orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
+    limit: topN.toString(),
   });
 
-  return (response.data.rows || []).map((row) => {
+  return (data.rows || []).map((row) => {
     const dims = row.dimensionValues || [];
     const vals = row.metricValues || [];
     return {
@@ -191,25 +262,15 @@ export async function fetchTopTrafficSources(
   endDate: string,
   topN: number = 10
 ): Promise<TrafficSourceRow[]> {
-  const client = getAnalyticsClient();
-
-  const response = await client.properties.runReport({
-    property: `properties/${PROPERTY_ID}`,
-    requestBody: {
-      dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: "sessionSourceMedium" }],
-      metrics: [
-        { name: "sessions" },
-        { name: "totalUsers" },
-      ],
-      orderBys: [
-        { metric: { metricName: "sessions" }, desc: true },
-      ],
-      limit: topN.toString(),
-    },
+  const data = await runReport({
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "sessionSourceMedium" }],
+    metrics: [{ name: "sessions" }, { name: "totalUsers" }],
+    orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+    limit: topN.toString(),
   });
 
-  return (response.data.rows || []).map((row) => {
+  return (data.rows || []).map((row) => {
     const dims = row.dimensionValues || [];
     const vals = row.metricValues || [];
     return {
@@ -220,7 +281,9 @@ export async function fetchTopTrafficSources(
   });
 }
 
-export async function fetchDashboardData(days: number = 7): Promise<DashboardData> {
+export async function fetchDashboardData(
+  days: number = 7
+): Promise<DashboardData> {
   const topN = parseInt(process.env.GA4_TOP_N || "10", 10);
   const ranges = getDateRanges(days);
 
