@@ -1,9 +1,18 @@
 import * as jose from "jose";
 
-const PROPERTY_ID = process.env.GA4_PROPERTY_ID || "331725099";
 const GA4_API = "https://analyticsdata.googleapis.com/v1beta";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
+
+function getPropertyId(): string {
+  const id = process.env.GA4_PROPERTY_ID;
+  if (!id) {
+    throw new Error(
+      "Missing GA4_PROPERTY_ID. Set it in wrangler.jsonc `vars` (your own GA4 property id), or in .dev.vars for local dev."
+    );
+  }
+  return id;
+}
 
 interface ServiceAccount {
   client_email: string;
@@ -88,7 +97,7 @@ async function runReport(
   requestBody: Record<string, unknown>
 ): Promise<GA4ReportResponse> {
   const token = await getAccessToken();
-  const res = await fetch(`${GA4_API}/properties/${PROPERTY_ID}:runReport`, {
+  const res = await fetch(`${GA4_API}/properties/${getPropertyId()}:runReport`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
